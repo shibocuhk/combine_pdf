@@ -23,19 +23,23 @@ module CombinePDF
 
 		# accessor (getter) for the secure_injection setting
 		def secure_injection
+			warn "**Deprecation Warning**: the `Page_Methods#secure_injection`, `Page_Methods#make_unsecure` and `Page_Methods#make_secure` methods are deprecated. Use `Page_Methods#copy(true)` for safeguarding against font/resource conflicts when 'stamping' one PDF page over another."
 			@secure_injection
 		end
 		# accessor (setter) for the secure_injection setting
 		def secure_injection= safe
+			warn "**Deprecation Warning**: the `Page_Methods#secure_injection`, `Page_Methods#make_unsecure` and `Page_Methods#make_secure` methods are deprecated. Use `Page_Methods#copy(true)` for safeguarding against font/resource conflicts when 'stamping' one PDF page over another."
 			@secure_injection = safe
 		end
 		# sets secure_injection to `true` and returns self, allowing for chaining methods
 		def make_secure
+			warn "**Deprecation Warning**: the `Page_Methods#secure_injection`, `Page_Methods#make_unsecure` and `Page_Methods#make_secure` methods are deprecated. Use `Page_Methods#copy(true)` for safeguarding against font/resource conflicts when 'stamping' one PDF page over another."
 			@secure_injection = true
 			self
 		end
 		# sets secure_injection to `false` and returns self, allowing for chaining methods
 		def make_unsecure
+			warn "**Deprecation Warning**: the `Page_Methods#secure_injection`, `Page_Methods#make_unsecure` and `Page_Methods#make_secure` methods are deprecated. Use `Page_Methods#copy(true)` for safeguarding against font/resource conflicts when 'stamping' one PDF page over another."
 			@secure_injection = false
 			self
 		end
@@ -48,10 +52,10 @@ module CombinePDF
 			inject_page obj, false
 		end
 		def inject_page obj, top = true
-			
+
 			raise TypeError, "couldn't inject data, expecting a PDF page (Hash type)" unless obj.is_a?(Page_Methods)
 
-			obj = obj.copy #obj.copy(secure_injection)
+			obj = obj.copy( should_secure?(obj) ) #obj.copy(secure_injection)
 
 			# following the reference chain and assigning a pointer to the correct Resouces object.
 			# (assignments of Strings, Arrays and Hashes are pointers in Ruby, unless the .dup method is called)
@@ -63,8 +67,9 @@ module CombinePDF
 					if res[key].nil?
 						res[key] = new_val
 					elsif res[key].is_a?(Hash) && new_val.is_a?(Hash)
-						new_val.update resources[key] # make sure the old values are respected
-						res[key].update new_val # transfer old and new values to the injected page
+						new_val = new_val[:referenced_object] || new_val
+						new_val.update (res[key][:referenced_object] || res[key]) # make sure the old values are respected
+						(res[key][:referenced_object] || res[key]).update new_val # transfer old and new values to the injected page
 					end #Do nothing if array - ot is the PROC array, which is an issue
 				end
 			end
@@ -110,7 +115,7 @@ module CombinePDF
 
 		# get page size
 		def page_size
-			cropbox || mediabox			
+			cropbox || mediabox
 		end
 
 		# accessor (getter) for the :Resources element of the page
@@ -218,7 +223,7 @@ module CombinePDF
 				radius = options[:box_radius]
 				half_radius = (radius.to_f / 2).round 4
 				## set starting point
-				box_stream << "#{options[:x] + radius} #{options[:y]} m\n" 
+				box_stream << "#{options[:x] + radius} #{options[:y]} m\n"
 				## buttom and right corner - first line and first corner
 				box_stream << "#{options[:x] + options[:width] - radius} #{options[:y]} l\n" #buttom
 				if options[:box_radius] != 0 # make first corner, if not straight.
@@ -321,7 +326,7 @@ module CombinePDF
 				# format text object(s)
 					# text_stream << "#{options[:font_color].join(' ')} rg\n" # sets the color state
 				encode_text(text, fonts).each do |encoded|
-					text_stream << "BT\n" # the Begine Text marker			
+					text_stream << "BT\n" # the Begine Text marker
 					text_stream << format_name_to_pdf(set_font encoded[0]) # Set font name
 					text_stream << " #{font_size.round 3} Tf\n" # set font size and add font operator
 					text_stream << "#{x.round 4} #{y.round 4} Td\n" # set location for text object
@@ -435,6 +440,38 @@ module CombinePDF
 			# always return self, for chaining.
 			self
 		end
+
+		# crops the page using a <b>relative</b> size.
+		#
+		# `crop` will crop the page by updating it's MediaBox property using a <b>relative</b> crop box. i.e.,
+	  # when cropping a page with {#page_size} of [10,10,900,900] to [5,5,500,500], the resulting page size should be [15, 15, 510, 510] - allowing you to ignore a page's initial XY starting point when cropping.
+		#
+		# for an absolute cropping, simpy use the {#mediabox=} or {#cropbox=} methods, setting their value to the new {page_size}.
+		#
+		# accepts:
+		# new_size:: an Array with four elements: [X0, Y0, X_max, Y_max]. For example, inch4(width)x6(length): `[200, 200, 488, 632]`
+		def crop(new_size=nil)
+			# no crop box? clear any cropping.
+			return page_size if !new_size
+			# type safety
+			raise TypeError, "pdf.page\#crop expeceted an Array (or nil)" unless Array === new_size
+
+			# set the MediaBox to the existing page size
+			self[:MediaBox] = page_size
+			# clear the CropBox
+			self[:CropBox] = nil
+			# update X0
+			self[:MediaBox][0] += new_size[0]
+			# update Y0
+			self[:MediaBox][1] += new_size[1]
+			# update X max IF the value is smaller then the existing value
+			self[:MediaBox][2] = (self[:MediaBox][0] + new_size[2] - new_size[0]) if ((self[:MediaBox][0] + new_size[2] - new_size[0])  < self[:MediaBox][2])
+			# update Y max IF the value is smaller then the existing value
+			self[:MediaBox][3] = (self[:MediaBox][1] + new_size[3] - new_size[1]) if ((self[:MediaBox][1] + new_size[3] - new_size[1])  < self[:MediaBox][3])
+			# return self for chaining
+			self
+		end
+
 
 		# rotate the page 90 degrees counter clockwise
 		def rotate_left
@@ -566,7 +603,7 @@ module CombinePDF
 					box_color = (options[:alternate_color] && ( (row_number.odd? && options[:headers]) || row_number.even? ) ) ? options[:alternate_color] : options[:main_color]
 					textbox text, {x: x, y: (top - (height*row_number)), width: column_widths[i], height: height, box_color: box_color, text_align: options[:row_align]}.merge(options)
 					x += column_widths[i]
-				end			
+				end
 				row_number += 1
 			end
 			self
@@ -609,7 +646,13 @@ module CombinePDF
 		end
 		#initializes the content stream in case it was not initialized before
 		def init_contents
+			self[:Contents] = self[:Contents][:referenced_object][:indirect_without_dictionary] if self[:Contents].is_a?(Hash) && self[:Contents][:referenced_object] && self[:Contents][:referenced_object].is_a?(Hash) && self[:Contents][:referenced_object][:indirect_without_dictionary]
+			self[:Contents] = [self[:Contents]] unless self[:Contents].is_a?(Array)
 			self[:Contents].delete({ is_reference_only: true , referenced_object: {indirect_reference_id: 0, raw_stream_content: ''} })
+			# un-nest any referenced arrays
+			self[:Contents].map! {|s| actual_value(s).is_a?(Array) ? actual_value(s) : s}
+			self[:Contents].flatten!
+			self[:Contents].compact!
 			# wrap content streams
 			insert_content 'q', 0
 			insert_content 'Q'
@@ -630,13 +673,17 @@ module CombinePDF
 			raise TypeError, "expected a String or Hash object." unless object.is_a?(Hash)
 			prep_content_array
 			self[:Contents].insert location, object
+			self[:Contents].flatten!
 			self
 		end
 
 		def prep_content_array
 			return self if self[:Contents].is_a?(Array)
-			self[:Contents] = self[:Contents][:referenced_object] if self[:Contents].is_a?(Hash) && self[:Contents][:referenced_object] && self[:Contents][:referenced_object].is_a?(Array)
-			self[:Contents] = [ self[:Contents] ].compact
+			init_contents
+			# self[:Contents] = self[:Contents][:referenced_object] if self[:Contents].is_a?(Hash) && self[:Contents][:referenced_object] && self[:Contents][:referenced_object].is_a?(Array)
+			# self[:Contents] = self[:Contents][:indirect_without_dictionary] if self[:Contents].is_a?(Hash) && self[:Contents][:indirect_without_dictionary] && self[:Contents][:indirect_without_dictionary].is_a?(Array)
+			# self[:Contents] = [self[:Contents]] unless self[:Contents].is_a?(Array)
+			# self[:Contents].compact!
 			self
 		end
 
@@ -664,19 +711,20 @@ module CombinePDF
 		def set_font(font = :Helvetica)
 			# if the font exists, return it's name
 			resources[:Font] ||= {}
-			resources[:Font].each do |k,v|
+			fonts_res = resources[:Font][:referenced_object] || resources[:Font]
+			fonts_res.each do |k,v|
 				if v.is_a?(Fonts::Font) && v.name && v.name == font
 					return k
 				end
 			end
 			# set a secure name for the font
-			name = (base_font_name + (resources[:Font].length + 1).to_s).to_sym
+			name = (base_font_name + (fonts_res.length + 1).to_s).to_sym
 			# get font object
 			font_object = Fonts.get_font(font)
 			# return false if the font wan't found in the library.
 			return false unless font_object
 			# add object to reasource
-			resources[:Font][name] = font_object
+			fonts_res[name] = font_object
 			#return name
 			name
 		end
@@ -685,7 +733,8 @@ module CombinePDF
 		def graphic_state(graphic_state_dictionary = {})
 			# if the graphic state exists, return it's name
 			resources[:ExtGState] ||= {}
-			resources[:ExtGState].each do |k,v|
+			gs_res = resources[:ExtGState][:referenced_object] || resources[:ExtGState]
+			gs_res.each do |k,v|
 				if v.is_a?(Hash) && v == graphic_state_dictionary
 					return k
 				end
@@ -695,7 +744,7 @@ module CombinePDF
 			# set a secure name for the graphic state
 			name = (SecureRandom.hex(9)).to_sym
 			# add object to reasource
-			resources[:ExtGState][name] = graphic_state_dictionary
+			gs_res[name] = graphic_state_dictionary
 			#return name
 			name
 		end
@@ -720,7 +769,7 @@ module CombinePDF
 						#add to array
 						if out.last.nil? || out.last[0] != fonts[i]
 							out.last[1] << ">" unless out.last.nil?
-							out << [fonts[i], "<" , 0, 0] 
+							out << [fonts[i], "<" , 0, 0]
 						end
 						out.last[1] << ( fonts_array[i].cmap.nil? ? ( c.unpack("H*")[0] ) : (fonts_array[i].cmap[c]) )
 						if fonts_array[i].metrics[c]
@@ -782,7 +831,7 @@ module CombinePDF
 			# travel every dictionary to pick up names (keys), change them and add them to the dictionary
 			res = self.resources
 			res.each do |k,v|
-				if v.is_a?(Hash)
+				if actual_value(v).is_a?(Hash)
 					# if k == :XObject
 					# 	self[:Resources][k] = v.dup
 					# 	next
@@ -790,7 +839,7 @@ module CombinePDF
 					new_dictionary = {}
 					new_name = "Combine" + SecureRandom.hex(7) + "PDF"
 					i = 1
-					v.each do |old_key, value|
+					actual_value(v).each do |old_key, value|
 						new_key = (new_name + i.to_s).to_sym
 						names_dictionary[old_key] = new_key
 						new_dictionary[new_key] = value
@@ -805,10 +854,10 @@ module CombinePDF
 			# we will need to make sure we have access to the stream injected
 			# we will user PDFFilter.inflate_object
 			self[:Contents].each do |c|
-				stream = actual_object(c)
+				stream = actual_value(c)
 				PDFFilter.inflate_object stream
 				names_dictionary.each do |old_key, new_key|
-					stream[:raw_stream_content].gsub! object_to_pdf(old_key), object_to_pdf(new_key)  ##### PRAY(!) that the parsed datawill be correctly reproduced! 
+					stream[:raw_stream_content].gsub! object_to_pdf(old_key), object_to_pdf(new_key)  ##### PRAY(!) that the parsed datawill be correctly reproduced!
 				end
 				# # # the following code isn't needed now that we wrap both the existing and incoming content streams.
 				# # patch back to PDF defaults, for OCRed PDF files.
@@ -817,139 +866,21 @@ module CombinePDF
 			self
 		end
 
-
-
-# ################
-# ##
-
-# 		def inject_to_page page = {Type: :Page, MediaBox: [0,0,612.0,792.0], Resources: {}, Contents: []}, stream = nil, top = true
-# 			# make sure both the page reciving the new data and the injected page are of the correct data type.
-# 			return false unless page.is_a?(Hash) && stream.is_a?(Hash)
-
-# 			# following the reference chain and assigning a pointer to the correct Resouces object.
-# 			# (assignments of Strings, Arrays and Hashes are pointers in Ruby, unless the .dup method is called)
-# 			page[:Resources] ||= {}
-# 			original_resources = page[:Resources]
-# 			if original_resources[:is_reference_only]
-# 				original_resources = original_resources[:referenced_object]
-# 				raise "Couldn't tap into resources dictionary, as it is a reference and isn't linked." unless original_resources
-# 			end
-# 			original_contents = page[:Contents]
-# 			original_contents = [original_contents] unless original_contents.is_a? Array
-
-# 			stream[:Resources] ||= {}
-# 			stream_resources = stream[:Resources]
-# 			if stream_resources[:is_reference_only]
-# 				stream_resources = stream_resources[:referenced_object]
-# 				raise "Couldn't tap into resources dictionary, as it is a reference and isn't linked." unless stream_resources
-# 			end
-# 			stream_contents = stream[:Contents]
-# 			stream_contents = [stream_contents] unless stream_contents.is_a? Array
-
-# 			# collect keys as objects - this is to make sure that
-# 			# we are working on the actual resource data, rather then references
-# 			flatten_resources_dictionaries stream_resources
-# 			flatten_resources_dictionaries original_resources
-
-# 			# injecting each of the values in the injected Page
-# 			stream_resources.each do |key, new_val|
-# 				unless PRIVATE_HASH_KEYS.include? key # keep CombinePDF structual data intact.
-# 					if original_resources[key].nil?
-# 						original_resources[key] = new_val
-# 					elsif original_resources[key].is_a?(Hash) && new_val.is_a?(Hash)
-# 						new_val.update original_resources[key] # make sure the old values are respected
-# 						original_resources[key].update new_val # transfer old and new values to the injected page
-# 					end #Do nothing if array - ot is the PROC array, which is an issue
-# 				end
-# 			end
-# 			original_resources[:ProcSet] = [:PDF, :Text, :ImageB, :ImageC, :ImageI] # this was recommended by the ISO. 32000-1:2008
-
-# 			if top # if this is a stamp (overlay)
-# 				page[:Contents] = original_contents
-# 				page[:Contents].unshift create_deep_copy(CONTENT_CONTAINER_START)
-# 				page[:Contents].push create_deep_copy(CONTENT_CONTAINER_MIDDLE)
-# 				page[:Contents].push *stream_contents
-# 				page[:Contents].push create_deep_copy(CONTENT_CONTAINER_END)
-# 			else #if this was a watermark (underlay? would be lost if the page was scanned, as white might not be transparent)
-# 				page[:Contents] = stream_contents
-# 				page[:Contents].unshift create_deep_copy(CONTENT_CONTAINER_START)
-# 				page[:Contents].push create_deep_copy(CONTENT_CONTAINER_MIDDLE)
-# 				page[:Contents].push *original_contents
-# 				page[:Contents].push create_deep_copy(CONTENT_CONTAINER_END)
-# 			end
-
-# 			page
-# 		end
-# 		# copy_and_secure_for_injection(page)
-# 		# - page is a page in the pages array, i.e.
-# 		#   pdf.pages[0]
-# 		# takes a page object and:
-# 		#
-# 		# makes a deep copy of the page (Ruby defaults to pointers, so this will copy the memory).
-# 		#
-# 		# then it will rewrite the content stream with renamed resources, so as to avoid name conflicts.
-# 		def copy_and_secure_for_injection(page)
-# 			# copy page
-# 			new_page = create_deep_copy page
-
-# 			# initiate dictionary from old names to new names
-# 			names_dictionary = {}
-
-# 			# itirate through all keys that are name objects and give them new names (add to dic)
-# 			# this should be done for every dictionary in :Resources
-# 			# this is a few steps stage:
-
-# 			# 1. get resources object
-# 			resources = new_page[:Resources]
-# 			if resources[:is_reference_only]
-# 				resources = resources[:referenced_object]
-# 				raise "Couldn't tap into resources dictionary, as it is a reference and isn't linked." unless resources
-# 			end
-
-# 			# 2. establich direct access to dictionaries and remove reference values
-# 			flatten_resources_dictionaries resources
-
-# 			# 3. travel every dictionary to pick up names (keys), change them and add them to the dictionary
-# 			resources.each do |k,v|
-# 				if v.is_a?(Hash)
-# 					new_dictionary = {}
-# 					new_name = "Combine" + SecureRandom.hex(7) + "PDF"
-# 					i = 1
-# 					v.each do |old_key, value|
-# 						new_key = (new_name + i.to_s).to_sym
-# 						names_dictionary[old_key] = new_key
-# 						new_dictionary[new_key] = value
-# 						i += 1
-# 					end
-# 					resources[k] = new_dictionary
-# 				end
-# 			end
-
-# 			# now that we have replaced the names in the resources dictionaries,
-# 			# it is time to replace the names inside the stream
-# 			# we will need to make sure we have access to the stream injected
-# 			# we will user PDFFilter.inflate_object
-# 			(new_page[:Contents].is_a?(Array) ? new_page[:Contents] : [new_page[:Contents] ]).each do |c|
-# 				stream = c[:referenced_object]
-# 				PDFFilter.inflate_object stream
-# 				names_dictionary.each do |old_key, new_key|
-# 					stream[:raw_stream_content].gsub! _object_to_pdf(old_key), _object_to_pdf(new_key)  ##### PRAY(!) that the parsed datawill be correctly reproduced! 
-# 				end
-# 				# patch back to PDF defaults, for OCRed PDF files.
-# 				# stream[:raw_stream_content] = "q\nq\nq\nDeviceRGB CS\nDeviceRGB cs\n0 0 0 rg\n0 0 0 RG\n0 Tr\n%s\nQ\nQ\nQ\n" % stream[:raw_stream_content]
-# 				# the following was removed for Acrobat Reader compatability: DeviceRGB CS\nDeviceRGB cs\n
-# 				stream[:raw_stream_content] = "q\nq\nq\n0 0 0 rg\n0 0 0 RG\n0 Tr\n1 0 0 1 0 0 cm\n%s\nQ\nQ\nQ\n" % stream[:raw_stream_content]
-# 			end
-
-# 			new_page
-# 		end
-
+		# @return [true, false] returns true if there are two different resources sharing the same named reference.
+		def should_secure?(page)
+			# travel every dictionary to pick up names (keys), change them and add them to the dictionary
+			res = actual_value(self.resources)
+			foreign_res = actual_value(page.resources)
+			tmp = nil
+			res.each do |k,v|
+				if ((v = actual_value(v)).is_a?(Hash) && (tmp = actual_value(foreign_res[k])).is_a?(Hash) )
+					v.keys.each do |name| return true if tmp[name] && tmp[name] != v[name]
+					end # else # Do nothing, this is taken care of elseware
+				end
+			end
+			false
+		end
 
 	end
-	
+
 end
-
-
-
-
-

@@ -25,15 +25,15 @@ module CombinePDF
 		# this function adds the references contained in "object", but DOESN'T add the object itself.
 		#
 		# this is used for internal operations, such as injectng data using the << operator.
-		def add_referenced(object)
+		def add_referenced(object, dup_pages = true)
 			# add references but not root
-			case 
+			case
 			when object.is_a?(Array)
-				object.each {|it| add_referenced(it)}
+				object.each {|it| add_referenced(it, dup_pages)}
 				return true
 			when object.is_a?(Hash)
 				# first if statement is actually a workaround for a bug in Acrobat Reader, regarding duplicate pages.
-				if object[:is_reference_only] && object[:referenced_object] && object[:referenced_object].is_a?(Hash) && object[:referenced_object][:Type] == :Page
+				if dup_pages && object[:is_reference_only] && object[:referenced_object] && object[:referenced_object].is_a?(Hash) && object[:referenced_object][:Type] == :Page
 					if @objects.find_index object[:referenced_object]
 						@objects << (object[:referenced_object] = object[:referenced_object].dup)
 					else
@@ -49,6 +49,8 @@ module CombinePDF
 						# stop this path, there is no need to run over the Hash's keys and values
 						return true
 					else
+						# stop if page propegation is false
+						return true if !dup_pages && object[:referenced_object][:Type] == :Page
 						# @objects.include? object[:referenced_object] is bound to be false
 						# the object wasn't found - add it to the @objects array
 						@objects << object[:referenced_object]
@@ -56,7 +58,7 @@ module CombinePDF
 
 				end
 				object.each do |k, v|
-					add_referenced(v) unless k == :Parent 
+					add_referenced(v, dup_pages) unless k == :Parent
 				end
 			else
 				return false
@@ -83,9 +85,20 @@ module CombinePDF
 			# build new Pages object
 			pages_object = {Type: :Pages, Count: page_list.length, Kids: page_list.map {|p| {referenced_object: p, is_reference_only: true} } }
 
+			# rebuild/rename the names dictionary
+			rebuild_names
 			# build new Catalog object
-			catalog_object = {Type: :Catalog, Pages: {referenced_object: pages_object, is_reference_only: true} }
+			catalog_object = {Type: :Catalog, Pages: {referenced_object: pages_object, is_reference_only: true}, Names: {referenced_object: @names, is_reference_only: true}}
 			catalog_object[:ViewerPreferences] = @viewer_preferences unless @viewer_preferences.empty?
+
+			# rebuild/rename the forms dictionary
+			if @forms_data.nil? || @forms_data.empty?
+				@forms_data = nil
+			else
+				@forms_data = {referenced_object: actual_value(@forms_data), is_reference_only: true}
+				catalog_object[:AcroForm] = @forms_data
+			end
+
 
 			# point old Pages pointers to new Pages object
 			## first point known pages objects - enough?
@@ -103,15 +116,25 @@ module CombinePDF
 			catalog_object
 		end
 
+		def names_object
+			@names
+		end
+		def forms_data
+			@forms_data
+		end
+
 		# @private
 		# this is an alternative to the rebuild_catalog catalog method
 		# this method is used by the to_pdf method, for streamlining the PDF output.
 		# there is no point is calling the method before preparing the output.
 		def rebuild_catalog_and_objects
 			catalog = rebuild_catalog
-			@objects = []
+			@objects.clear
+			@objects << @info
+			add_referenced @info
 			@objects << catalog
-			add_referenced catalog
+			add_referenced catalog[:Pages]
+			add_referenced catalog[:Names], false
 			catalog
 		end
 
@@ -136,6 +159,69 @@ module CombinePDF
 			@objects.each {|obj| obj.delete(:indirect_reference_id); obj.delete(:indirect_generation_number)}
 		end
 
+		def rebuild_names name_tree = nil, base = "CombinePDF_0000000"
+			if name_tree
+				dic = []
+				case name_tree
+				when Array
+					if name_tree[0].is_a? String
+						(name_tree.length/2).times do |i|
+							dic << (name_tree[i*2].clear << base.next!)
+							dic << name_tree[(i*2) + 1]
+						end
+					else
+						name_tree.each {|kid| dic.concat rebuild_names(kid, base) }
+					end
+				when Hash
+					if name_tree[:Kids]
+						dic.concat rebuild_names(name_tree[:Kids], base)
+					elsif name_tree[:Names]
+						dic.concat rebuild_names(name_tree[:Names], base)
+					elsif name_tree[:referenced_object]
+						dic.concat rebuild_names(name_tree[:referenced_object], base)
+					end
+				end
+				return dic
+			end
+			@names.keys.each do |k|
+				@names[k] = {referenced_object: { Names: rebuild_names(@names[k], base) } , is_reference_only: true} unless k == :Type
+			end
+		end
+
+		# @private
+		# this method reviews a Hash an updates it by merging Hash data,
+		# preffering the new over the old.
+		def self.hash_merge_new_no_page key, old_data, new_data
+			if old_data.is_a? Hash
+				return old_data if old_data[:Type] == :Page
+				old_data.merge( new_data, &( @hash_merge_new_no_page_proc ||= self.method(:hash_merge_new_no_page) ) )
+			elsif old_data.is_a? Array
+				old_data + new_data
+			else
+				new_data
+			end
+		end
+
+
+		private
+
+		def renaming_dictionary object = nil, dictionary = {}
+			object ||= @names
+			case object
+			when Array
+				object.length.times {|i| object[i].is_a?(String) ? (dictionary[object[i]] = (dictionary.last || "Random_0001").next) : renaming_dictionary(object[i], dictionary) }
+			when Hash
+				object.values.each {|v| renaming_dictionary v, dictionary }
+			end
+		end
+
+		def rename_object object, dictionary
+			case object
+			when Array
+				object.length.times {|i| }
+			when Hash
+			end
+		end
+
 	end
 end
-

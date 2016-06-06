@@ -1,13 +1,28 @@
 # CombinePDF - the ruby way for merging PDF files
+[![Gem Version](https://badge.fury.io/rb/combine_pdf.svg)](http://badge.fury.io/rb/combine_pdf)
+[![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/combine_pdf)
+
 CombinePDF is a nifty model, written in pure Ruby, to parse PDF files and combine (merge) them with other PDF files, watermark them or stamp them (all using the PDF file format and pure Ruby code).
 
-# Install
+## Install
 
 Install with ruby gems:
 
 ```ruby
 gem install combine_pdf
 ```
+
+## Known Limitations
+
+CombinePDF is written natively in Ruby and should (presumably) work on all Ruby platforms that follow Ruby 2.0 compatibility.
+
+However, PDF files are quite complex creatures and no guaranty is provided.
+
+For example, PDF Forms are known to have issues and form data might be lost when attempting to combine PDFs with filled form data (also, forms are global objects, not page specific, so one should combine the whole of the PDF for any data to have any chance of being preserved).
+
+The same applies to PDF links and the table of contents, which all have global attributes and could be corrupted or lost when combining PDF data.
+
+If this library causes loss of data or burns down your house, I'm not to blame - as pointed to by the MIT license. That being said, I'm using the library happily after testing against different solutions.
 
 ## Combine/Merge PDF files or Pages
 
@@ -72,7 +87,7 @@ pdf.save "file_with_numbering.pdf"
 
 Numbering can be done with many different options, with different formating, with or without a box object, and even with opacity values - see documentation.
 
-## Loading PDF data
+## Loading and Rendering PDF data
 
 Loading PDF data can be done from file system or directly from the memory.
 
@@ -82,19 +97,35 @@ Loading data from a file is easy:
 pdf = CombinePDF.load("file.pdf")
 ```
 
-you can also parse PDF files from memory:
+You can also parse PDF files from memory. Loading from the memory is especially effective for importing PDF data recieved through the internet or from a different authoring library such as Prawn:
 
 ```ruby
-pdf_data = IO.read 'file.pdf' # for this demo, load a file to memory
+pdf_data = prawn_pdf_document.render # Import PDF data from Prawn
 pdf = CombinePDF.parse(pdf_data)
 ```
 
-Loading from the memory is especially effective for importing PDF data recieved through the internet or from a different authoring library such as Prawn.
+Similarly, you can output a string of PDF data using `.to_pdf`. For example, to let a user download the PDF from a [Rails](http://rubyonrails.org) or [Plezi](https://github.com/boazsegev/plezi) app:
+
+```ruby
+# in a controller action
+send_data combined_file.to_pdf, filename: "combined.pdf", type: "application/pdf"
+```
+
+Or in [Sinatra](http://www.sinatrarb.com):
+
+```ruby
+# in your path's block
+status 200
+body combined_file.to_pdf
+headers 'content-type' => "application/pdf"
+```
+
+If you prefer to save the PDF data to a file, you can always use the `save` method as we did in our earlier examples.
 
 Demo
 ====
 
-You can see a Demo for a ["Bates stumping web-app"](http://combine-pdf-demo.herokuapp.com/bates) and read through it's [code](http://combine-pdf-demo.herokuapp.com/code) . Good luck :)
+You can see a Demo for a ["Bates stumping web-app"](http://combine-pdf-demo.herokuapp.com/bates) and read through it's [code](https://github.com/boazsegev/combine_pdf_demo/blob/c9914588e4116dcfdaa37f85727f442b064e2b04/pdf_controller.rb) . Good luck :)
 
 Decryption & Filters
 ====================

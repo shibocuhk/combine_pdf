@@ -103,6 +103,8 @@ module CombinePDF
 			# set data from parser
 			@version = parser.version if parser.version.is_a? Float
 			@info = parser.info_object || {}
+			@names = parser.names_object || {}
+			@forms_data = parser.forms_object || {}
 
 			# general globals
 			@set_start_id = 1
@@ -145,9 +147,13 @@ module CombinePDF
 		def author=(new_author = nil)
 			@info[:Author] = new_author
 		end
+		# Clears any existing form data.
+		def clear_forms_data
+			@forms_data.nil? || @forms_data.clear
+		end
 
 		# Save the PDF to file.
-		# 
+		#
 		# file_name:: is a string or path object for the output.
 		#
 		# **Notice!** if the file exists, it **WILL** be overwritten.
@@ -163,8 +169,10 @@ module CombinePDF
 		def to_pdf options = {}
 			#reset version if not specified
 			@version = 1.5 if @version.to_f == 0.0
-			#set creation date for merged file
-			@info[:CreationDate] = Time.now.strftime "D:%Y%m%d%H%M%S%:::z'00"
+			#set info for merged file
+			@info[:ModDate] = @info[:CreationDate] = Time.now.strftime "D:%Y%m%d%H%M%S%:::z'00"
+			@info[:Subject] = options[:subject] if options[:subject]
+			@info[:Producer] = options[:producer] if options[:producer]
 			#rebuild_catalog
 			catalog = rebuild_catalog_and_objects
 			# add ID and generation numbers to objects
@@ -193,13 +201,7 @@ module CombinePDF
 			out << out.pop + "trailer"
 			out << "<<\n/Root #{false || "#{catalog[:indirect_reference_id]} #{catalog[:indirect_generation_number]} R"}"
 			out << "/Size #{indirect_object_count.to_s}"
-			if @info.is_a?(Hash)
-				PRIVATE_HASH_KEYS.each {|key| @info.delete key} # make sure the dictionary is rendered inline, without stream
-				@info[:CreationDate] = @info[:ModDate] = Time.now.strftime "D:%Y%m%d%H%M%S%:::z'00"
-				@info[:Subject] = options[:subject] if options[:subject]
-				@info[:Producer] = options[:producer] if options[:producer]
-				out << "/Info #{object_to_pdf @info}"
-			end
+			out << "/Info #{@info[:indirect_reference_id]} #{@info[:indirect_generation_number]} R"
 			out << ">>\nstartxref\n#{xref_location.to_s}\n%%EOF"
 			# when finished, remove the numbering system and keep only pointers
 			remove_old_ids
@@ -297,6 +299,13 @@ module CombinePDF
 			if data.is_a? PDF
 		 		@version = [@version, data.version].max
 				pages_to_add = data.pages
+				actual_value(@names).update actual_value(data.names_object), &self.class.method(:hash_merge_new_no_page)
+				if actual_value(@forms_data)
+					actual_value(@forms_data).update actual_value(data.forms_data), &self.class.method(:hash_merge_new_no_page) if data.forms_data
+				else
+					@forms_data = data.forms_data
+				end
+				warn "Form data might be lost when combining PDF forms (possible conflicts)." unless data.forms_data.nil? || data.forms_data.empty?
 			elsif data.is_a?(Array) && (data.select {|o| !(o.is_a?(Hash) && o[:Type] == :Page) } ).empty?
 				pages_to_add = data
 			elsif data.is_a?(Hash) && data[:Type] == :Page
@@ -405,7 +414,7 @@ module CombinePDF
 					right_position = page_width - from_side - box_width
 					top_position = page_height - from_height
 					bottom_position = from_height + box_height
-					
+
 					if opt[:location].include? :top
 						 page.textbox text, {x: center_position, y: top_position }.merge(add_opt)
 					end
@@ -446,7 +455,7 @@ module CombinePDF
 				options[:location] ||= [:center]
 				number_pages({number_format: stamp}.merge(options))
 			when Page_Methods
-				# stamp = stamp.copy(true) 
+				# stamp = stamp.copy(true)
 				if options[:underlay]
 					(options[:page_range] ? pages[options[:page_range]] : pages).each {|p| p >> stamp}
 				else
@@ -460,4 +469,3 @@ module CombinePDF
 	end
 
 end
-

@@ -2,6 +2,128 @@
 
 ***
 
+Change log v.0.2.21
+
+**Fix**: fix for issue #54 and #59 (duplicate), discovered by @iggant (Anton Kolodii), related to name conflict resolution and page resources. The issue would cause and error (exception) to occur when attempting to merge pages with specific resource structures. Credit to @cw6365 (Chris Ward) and @DenKey (Den) as well.
+
+***
+
+Change log v.0.2.20
+
+**Fix**: fix for issue #56, discovered by @LeptonHeavy, regarding errors caused by the new PDF form support feature.
+
+***
+
+Change log v.0.2.19 (yanked)
+
+**Partial fix**: unconfirmed fix for issue #56, discovered by @LeptonHeavy, regarding errors caused by the new PDF form support feature.
+
+***
+
+Change log v.0.2.18 (yanked)
+
+**Feature**: added minor (read: initial and incomplete) PDF forms support, in an attempt to preserve form data when combining PDF files.
+
+***
+
+Change log v.0.2.17
+
+**Feature**: added the `page#crop` method to easily crop a PDF file in accordance with the GWG industry association recommendations (updating the `MediaBox` property rather then the `CropBox`). Credit to @wingleungchoi for this feature.
+
+***
+
+Change log v.0.2.16
+
+**Fix**: Fix for issue #49 where specific PDF files containing junk data after the %%EOF marker couldn't be opened (as they were invalid files). The issue was fixed by scanning any trailing data before continuing to parse any PDF file beyond the first %%EOF markers (multiple markers are common when using the PDF format). Credit to @wingleungchoi for providing an example for the issue.
+
+***
+
+Change log v.0.2.15
+
+**Fix**: Fix for issue #22 where specific PDF files with nested references could cause page stamping to fail, raising an exception. Credit to @tomascharad for finding the issue.
+
+***
+
+Change log v.0.2.14
+
+**Fix**: Fix for issue #39, where certain comments could have caused the object after the comments to be ignored, resulting in parsing errors. Credit to @lgn21st for identifying the issue.
+
+***
+
+Change log v.0.2.13
+
+**Fix** fixed issue # 37 reported by @sega (thank you for reporting!), regarding the insability to stamp one PDF page over another when one PDF page used a resource directory propegated with data and another page used a resource directory propegated with references. This was now resolved by checking for references before merging the data.
+
+**Compatability**: fixed an issue where PrimoPDF would ommit the required EOL marker before the `endstream`. This would cause malformed PDF files to be written and it is now resolved by allowing the required EOL to be optional.
+
+**Minor**: a minor improvement on the compatability fix related to salvaging PDF data that was misplaced within a PDF comment. This improvement relates to the possibility that there might not be an EOL marker after the `obj` keyword (PaperPort does use an EOL after the `obj` keyword, so this isn't critical).
+
+***
+
+Change log v.0.2.12
+
+**Compatability**: fixed issue #36 reported by @vitstradal (thank you for reporting!) regarding PDF files composed by PaperPort. PaperPort (at least version 12) has an issue where PDF data will be placed within a PDF comment. PDF comments start with a "%" sign and end with an EOL marker ("\r" or "\n"). PaperPort ommitted the EOL marker, placing critical data within the comment. A work-around was found by parsing the comment's data and attempting to salvage the misplaced data. This workaround assumes that comments would not contain PDF parsable data at the very end of the comment's line... which is an unsafe assumption. hence, **please let me know if you find _any_ PDF files that worked before the workaround was introduced**.
+
+***
+
+Change log v.0.2.11
+
+**Fix**: fix for issue #35 , which was caused by the broken fix for issue #34. Credit to Davek Rupinski for pointing out the issue.
+
+***
+
+Change log v.0.2.10
+
+**Fix**: fixed page stamping when the page's content was a referenced object instead or a direct array of content references. Credit to vitstradal for discovering the issue.
+
+***
+
+Change log v.0.2.9
+
+**Fix** hopefully fixed issue #33 ([NoMethodError undefined method `[]` for nil:NilClass](https://github.com/boazsegev/combine_pdf/issues/33)).
+
+***
+
+Change log v.0.2.8
+
+* **Fix/Feature**: (related to [issue #32](https://github.com/boazsegev/combine_pdf/issues/32))
+
+     Experience shows that it's very difficult to know when to use `page.copy` v.s. `page.copy(true)` before stamping one pdf pages on top (or under) another... So...
+
+     Now there is no longer any need for the guesswork. The process is automated for you.
+
+     The moment CombinePDF recognizes a resource name conflice between two pages (such as both pages using one font name to reference two different fonts), CombinePDF will intrusively rename the incoming page's resources.
+
+     It is true that the intrusive resource renaming is somewhat risky and might require the inflation of some comperssed page data (resulting in bigger file sizes), but this is the only way to attempt and prevent PDF data curruption.
+
+***
+
+Change log v.0.2.7
+
+**Fix**: Fixed an issue where a malformed PDF String could cause the parser to hang.
+
+**Update**: Inner PDF links (links to pages within the PDF file) will now be preserved when importing a whole PDF (although Outlines, for now, are discarede and their related links will be discarded as well). If the same destination page is inserted more than once (the first version will be preferred).
+
+**Deprecation Warning**: the `Page_Methods#secure_injection`, `Page_Methods#make_unsecure` and `Page_Methods#make_secure` methods are deprecated. Use `Page_Methods#copy(true)` for safeguarding against font/resource conflicts when "stamping" one PDF page over another.
+
+***
+
+Change log v.0.2.6
+
+**fixed**: Hasan Iskandar fixed issue #30 - Output file cannot be saved from Adobe Reader with "Save As optimizes for Fast Web View" preference enabled. Thank you Hasan.
+
+**update**: More parsing error detection; Updated the endstream EOL marker indentifier for safer indentification.
+
+***
+
+Change log v.0.2.5
+
+**feature**: circumvents an issue with 'wkhtmltopdf', where sometimes the `endobj` keyword would be missing, causing malformed PDF data. The parser will now attempt to auto-fix any `endobj` missing keywords.
+
+**semi-fix**: make sure decryption is attempetd using actual values (vs. references). The code was updated for a similar result as should have been achived before.
+
+***
+
 Change log v.0.2.4
 
 **fixed**: Fixed the default page sizes which weren't as described in the documentation and now default to US Letter. The documentation was also fixed. No major version bump is declered since the defaults were faulty and weren't as described (fixed a bug, not changed the API).
@@ -90,7 +212,7 @@ Change log v.0.1.19
 
 Change log v.0.1.18
 
-**fix**: Thank to Stefan, who reported issue #15 , we discovered that in some cases PDF files presented the wrong PDF standard version, causing an error while attempting to parse their data. The issue has been fixed by allowing the parser to search for PDF Object Streams even when the PDF file claims a PDF version below 1.5. 
+**fix**: Thank to Stefan, who reported issue #15 , we discovered that in some cases PDF files presented the wrong PDF standard version, causing an error while attempting to parse their data. The issue has been fixed by allowing the parser to search for PDF Object Streams even when the PDF file claims a PDF version below 1.5.
 
 ***
 

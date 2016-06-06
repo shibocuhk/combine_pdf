@@ -53,7 +53,7 @@ module CombinePDF
 				("(" + ([].tap {|out| object.bytes.each {|byte| STRING_REPLACEMENT_HASH[ byte.chr ] ? (STRING_REPLACEMENT_HASH[ byte.chr ].bytes.each {|b| out << b}) : out << byte } }).pack('C*') + ")").force_encoding(Encoding::ASCII_8BIT)
 			else
 				# A hexadecimal string shall be written as a sequence of hexadecimal digits (0–9 and either A–F or a–f)
-				# encoded as ASCII characters and enclosed within angle brackets (using LESS-THAN SIGN (3Ch) and GREATER- THAN SIGN (3Eh)). 
+				# encoded as ASCII characters and enclosed within angle brackets (using LESS-THAN SIGN (3Ch) and GREATER- THAN SIGN (3Eh)).
 				("<" + object.unpack('H*')[0] + ">").force_encoding(Encoding::ASCII_8BIT)
 			end
 		end
@@ -83,7 +83,7 @@ module CombinePDF
 			# An array shall be written as a sequence of objects enclosed in SQUARE BRACKETS (using LEFT SQUARE BRACKET (5Bh) and RIGHT SQUARE BRACKET (5Dh)).
 			# EXAMPLE [549 3.14 false (Ralph) /SomeName]
 			("[" + (object.collect {|item| object_to_pdf(item)}).join(' ') + "]").force_encoding(Encoding::ASCII_8BIT)
-			
+
 		end
 
 		def format_hash_to_pdf(object)
@@ -112,6 +112,8 @@ module CombinePDF
 					return out.join().force_encoding(Encoding::ASCII_8BIT)
 				end
 			end
+			# remove extra page references.
+			object[:Contents].delete({ is_reference_only: true , referenced_object: {indirect_reference_id: 0, raw_stream_content: ''} }) if object[:Type] == :Page
 			# correct stream length, if the object is a stream.
 			object[:Length] = object[:raw_stream_content].bytesize if object[:raw_stream_content]
 
@@ -122,6 +124,7 @@ module CombinePDF
 			object.each do |key, value|
 				out << "#{object_to_pdf key} #{object_to_pdf value}\n".force_encoding(Encoding::ASCII_8BIT) unless PDF::PRIVATE_HASH_KEYS.include? key
 			end
+			object.delete :Length
 			out << ">>".force_encoding(Encoding::ASCII_8BIT)
 			out << "\nstream\n#{object[:raw_stream_content]}\nendstream".force_encoding(Encoding::ASCII_8BIT) if object[:raw_stream_content]
 			out << "\nendobj\n" if object[:indirect_reference_id]
@@ -130,6 +133,12 @@ module CombinePDF
 
 		def actual_object obj
 			obj.is_a?(Hash) ? (obj[:referenced_object] || obj) : obj
+		end
+
+		def actual_value obj
+			return obj unless obj.is_a?(Hash)
+			obj = obj[:referenced_object] || obj
+			obj[:indirect_without_dictionary] || obj
 		end
 
 		# Ruby normally assigns pointes.
